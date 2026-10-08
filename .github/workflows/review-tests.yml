@@ -1,0 +1,149 @@
+name: Review tests (Cursor Agent)
+
+# Quality gate: en cada PR que toque specs, el Cursor Agent aplica la skill
+# .cursor/skills/review-tests, ejecuta los specs cambiados en chromium y deja
+# el veredicto como comentario del PR.
+#
+# Enfoque restringido (recomendado por Cursor para CI):
+#   - El agente solo lee, ejecuta tests y escribe review-report.md.
+#     Permisos en .github/cursor-cli-ci.json (sin gh, sin git push/commit).
+#   - Comentar en el PR y decidir el estado del check lo hace CI, no el agente.
+
+on:
+  pull_request:
+    paths:
+      - 'tests/**'
+      - 'playwright.config.ts'
+      - 'AGENTS.md'
+      - '.cursor/skills/review-tests/**'
+      - '.github/workflows/review-tests.yml'
+      - '.github/cursor-cli-ci.json'
+
+permissions:
+  contents: read
+  pull-requests: write
+
+concurrency:
+  group: review-tests-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  review:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Changed specs
+        id: specs
+        run: |
+          git diff --name-only --diff-filter=ACMR "origin/${{ github.base_ref }}...HEAD" -- 'tests/*.spec.ts' > changed-specs.txt
+          echo "Specs cambiados:"; cat changed-specs.txt
+          if [ -s changed-specs.txt ]; then
+            echo "any=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "any=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Install Playwright (chromium)
+        if: steps.specs.outputs.any == 'true'
+        run: npx playwright install --with-deps chromium
+
+      - name: Install Cursor CLI
+        if: steps.specs.outputs.any == 'true'
+        run: |
+          curl https://cursor.com/install -fsS | bash
+          echo "$HOME/.cursor/bin" >> "$GITHUB_PATH"
+
+      - name: Apply CI permissions for the agent
+        if: steps.specs.outputs.any == 'true'
+        run: cp .github/cursor-cli-ci.json .cursor/cli.json
+
+      - name: Run review-tests skill
+        if: steps.specs.outputs.any == 'true'
+        env:
+          CURSOR_API_KEY: ${{ secrets.CURSOR_API_KEY }}
+          CI: 'true'
+        run: |
+          SPECS=$(tr '\n' ' ' < changed-specs.txt)
+          agent -p --force --output-format text "
+          Eres el revisor de calidad de este repo en CI (PR #${{ github.event.pull_request.number }}).
+
+          Lee AGENTS.md y .cursor/skills/review-tests/SKILL.md y aplica esa skill
+          exactamente a estos specs: ${SPECS}
+
+          Reglas de CI:
+          - Ejecuta: npx playwright test ${SPECS} --project=chromium --reporter=line
+            y usa el resultado en la sección 'Ejecución' del reporte.
+          - NO modifiques specs ni ningún archivo del repo. NO uses git para
+            escribir ni gh. Tu única salida es el archivo review-report.md.
+          - Escribe el reporte completo en review-report.md con el formato de la
+            skill (🔴/🟡/🟢, Ejecución, Veredicto). Un reporte por spec revisado.
+          - La última línea del archivo debe ser exactamente una de:
+            VEREDICTO: Aprobado
+            VEREDICTO: Aprobado con cambios
+            VEREDICTO: Rechazado
+          "
+          echo "----- review-report.md -----"
+          cat review-report.md
+
+      - name: Comment on PR
+        if: steps.specs.outputs.any == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR: ${{ github.event.pull_request.number }}
+          REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          MARKER='<!-- cursor-review-tests -->'
+          {
+            echo "$MARKER"
+            echo "## 🤖 Revisión de tests (Cursor Agent)"
+            echo
+            if [ -f review-report.md ]; then
+              cat review-report.md
+            else
+              echo "El agente no generó review-report.md. Revisa el [log de la ejecución]($RUN_URL)."
+            fi
+            echo
+            echo "---"
+            echo "_Generado por \`.cursor/skills/review-tests\` · [ver ejecución]($RUN_URL)_"
+          } > comment.md
+
+          # Actualiza el comentario existente del bot en vez de añadir uno nuevo por push.
+          EXISTING=$(gh api "repos/$REPO/issues/$PR/comments" --paginate \
+            --jq "[.[] | select(.body | startswith(\"$MARKER\"))] | first | .id // empty")
+          if [ -n "$EXISTING" ]; then
+            gh api -X PATCH "repos/$REPO/issues/comments/$EXISTING" -F body=@comment.md >/dev/null
+            echo "Comentario actualizado ($EXISTING)."
+          else
+            gh pr comment "$PR" --repo "$REPO" --body-file comment.md
+            echo "Comentario creado."
+          fi
+
+      - name: Check verdict
+        if: steps.specs.outputs.any == 'true'
+        # Mientras se calibra el revisor, un 'Rechazado' no bloquea el merge.
+        # Cuando los veredictos sean fiables: quitar continue-on-error y marcar
+        # este workflow como required check en Settings → Branches.
+        continue-on-error: true
+        run: |
+          VERDICT=$(grep -E '^VEREDICTO:' review-report.md | tail -1 || true)
+          echo "Veredicto: ${VERDICT:-no encontrado}"
+          case "$VERDICT" in
+            *Rechazado*) echo "::error::El revisor rechazó los cambios en tests/."; exit 1 ;;
+            *"con cambios"*) echo "::warning::Aprobado con cambios sugeridos." ;;
+            *Aprobado*) echo "Aprobado." ;;
+            *) echo "::warning::El reporte no terminó con una línea VEREDICTO válida." ;;
+          esac

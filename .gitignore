@@ -7,3 +7,4 @@ node_modules/
 
 # Capturas sueltas en la raiz (verificaciones manuales)
 /*.png
+/.cursor/cli.json

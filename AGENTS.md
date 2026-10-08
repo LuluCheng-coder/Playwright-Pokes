@@ -23,6 +23,9 @@ anteponer la ruta real: `PLAYWRIGHT_BROWSERS_PATH=$HOME/Library/Caches/ms-playwr
 - `playwright.config.ts` — sin `baseURL`; cada spec declara `const BASE_URL = 'https://pokecampfire.com/'`.
 - `.cursor/mcp.json` — servidor MCP de Playwright (chromium). El agente lo usa para explorar la página real antes de escribir tests.
 - `.cursor/skills/` — skills invocables con `/nombre`. `.cursor/hooks/` — validaciones automáticas.
+- `.github/workflows/review-tests.yml` — en cada PR que toque `tests/`, el Cursor Agent (CLI headless) aplica
+  `/review-tests`, ejecuta los specs cambiados y comenta el veredicto. Permisos del agente en `.github/cursor-cli-ci.json`.
+- Flujo de trabajo: cambios en `tests/` van por rama + PR, no directo a `main`, para que pase por la revisión.
 - Ignorados: `test-results/`, `playwright-report/`, `.playwright-mcp/`, `*.png` en la raíz.
 
 ## Convenciones de tests

@@ -1,0 +1,42 @@
+{
+  "permissions": {
+    "allow": [
+      "Read(**)",
+      "Write(review-report.md)",
+      "Shell(npx)",
+      "Shell(npm)",
+      "Shell(node)",
+      "Shell(cat)",
+      "Shell(ls)",
+      "Shell(grep)",
+      "Shell(rg)",
+      "Shell(find)",
+      "Shell(wc)",
+      "Shell(head)",
+      "Shell(tail)",
+      "Shell(git:diff*)",
+      "Shell(git:status*)",
+      "Shell(git:log*)",
+      "Shell(git:show*)"
+    ],
+    "deny": [
+      "Shell(gh)",
+      "Shell(rm)",
+      "Shell(curl)",
+      "Shell(wget)",
+      "Shell(git:push*)",
+      "Shell(git:commit*)",
+      "Shell(git:checkout*)",
+      "Shell(git:reset*)",
+      "Shell(git:add*)",
+      "Write(tests/**)",
+      "Write(.github/**)",
+      "Write(.cursor/**)",
+      "Write(package.json)",
+      "Write(package-lock.json)",
+      "Write(playwright.config.ts)",
+      "Write(**/.env*)",
+      "Read(**/.env*)"
+    ]
+  }
+}
