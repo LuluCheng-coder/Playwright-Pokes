@@ -17,7 +17,9 @@ anteponer la ruta real: `PLAYWRIGHT_BROWSERS_PATH=$HOME/Library/Caches/ms-playwr
 
 ## Estructura
 
-- `tests/*.spec.ts` — un archivo por área funcional. Nombres en kebab-case descriptivo (`list-verification`, no `test1`).
+- `tests/*.spec.ts` — un archivo por área funcional.
+  - Specs de una página del sitio se nombran por su ruta: `/rules` → `tests/rules.spec.ts`, `/raids` → `tests/raids.spec.ts`.
+  - Specs transversales (home, menú, pie) usan un nombre descriptivo en kebab-case (`list-verification`, no `test1`).
 - `playwright.config.ts` — sin `baseURL`; cada spec declara `const BASE_URL = 'https://pokecampfire.com/'`.
 - `.cursor/mcp.json` — servidor MCP de Playwright (chromium). El agente lo usa para explorar la página real antes de escribir tests.
 - `.cursor/skills/` — skills invocables con `/nombre`. `.cursor/hooks/` — validaciones automáticas.
